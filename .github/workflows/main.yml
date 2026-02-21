@@ -1,28 +1,24 @@
-name: Daily Stock Analysis Automation (GAS Version)
+name: Daily Stock Analysis Automation V2.5
 
 on:
   schedule:
-    - cron: '30 08 * * 1-5' # 평일 17:30 (KST)
-  workflow_dispatch: # 수동 실행 버튼
+    - cron: '30 08 * * 1-5' # 평일 오후 5시 30분
+  workflow_dispatch:
 
 jobs:
   analysis:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Set up Python 3.11
+      - uses: actions/checkout@v3
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install Dependencies
-        run: |
-          pip install --upgrade finance-datareader pandas requests
-
-      - name: Run Analysis
-        # [핵심 수정] 파이썬 코드에게 우체국 주소(URL)를 전달합니다.
+      - name: Install Libraries
+        # lxml과 html5lib이 Naver Finance 테이블 파싱의 핵심입니다.
+        run: pip install --upgrade finance-datareader pandas requests lxml html5lib
+      - name: Run Script
         env:
           GAS_WEBAPP_URL: ${{ secrets.GAS_WEBAPP_URL }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: python update_stock_automatic.py
