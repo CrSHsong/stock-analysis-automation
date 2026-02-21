@@ -24,6 +24,10 @@ def get_naver_financials(total_pages=30):
         all_dfs.append(df)
         
     full_df = pd.concat(all_dfs)
+
+    # [수정 포인트] 네이버의 '종목명' 컬럼을 'Name'으로 변경하여 merge가 가능하게 함
+    if '종목명' in full_df.columns:
+        full_df.rename(columns={'종목명': 'Name'}, inplace=True)
     
     # KRX 종목코드 매칭
     df_krx = fdr.StockListing('KRX')[['Code', 'Name']]
@@ -55,22 +59,18 @@ def get_analysis_data():
         if df.empty or len(df) < 30: continue
         
         # --- 기술적 지표 계산 ---
-        # 1. 이동평균선
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['SMA60'] = df['Close'].rolling(window=60).mean()
         
-        # 2. RSI
         delta = df['Close'].diff()
         up, down = delta.copy(), delta.copy()
         up[up < 0] = 0; down[down > 0] = 0
         df['RSI'] = 100 - (100 / (1 + (up.ewm(com=13).mean() / down.abs().ewm(com=13).mean())))
         
-        # 3. 볼린저 밴드
         std = df['Close'].rolling(window=20).std()
         df['BB_Upper'] = df['SMA20'] + (std * 2)
         df['BB_Lower'] = df['SMA20'] - (std * 2)
         
-        # 4. MACD
         exp1 = df['Close'].ewm(span=12, adjust=False).mean()
         exp2 = df['Close'].ewm(span=26, adjust=False).mean()
         df['MACD'] = exp1 - exp2
@@ -102,12 +102,10 @@ if __name__ == "__main__":
     final_df = get_analysis_data()
     final_df = final_df.sort_values(by='RSI', ascending=True)
     
-    # 파일 저장 및 업로드
     full_file = "analysis_full.csv"
     final_df.to_csv(full_file, index=False, encoding='utf-8-sig')
     upload_via_gas(full_file, f"stock_full_{datetime.now().strftime('%Y%m%d')}.csv")
     
-    # 타겟 종목 (RSI 과매도 또는 MACD 반전)
     candidates = final_df[(final_df['RSI'] <= 35) | (final_df['MACD_Hist'] > 0)]
     candidate_file = "target_candidates.csv"
     candidates.to_csv(candidate_file, index=False, encoding='utf-8-sig')
