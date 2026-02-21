@@ -1,11 +1,9 @@
 import FinanceDataReader as fdr
 import pandas as pd
+import requests
+import base64
 import os
-import json
 from datetime import datetime, timedelta
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
-from oauth2client.service_account import ServiceAccountCredentials
 
 def get_analysis_data():
     print("종목 분석 시작... (약 10~15분 소요)")
@@ -36,39 +34,27 @@ def get_analysis_data():
         last_row['Code'], last_row['Name'] = code, name
         analysis_results.append(last_row)
         
-    return pd.DataFrame(analysis_results)
-
-def upload_to_drive(file_path):
-    print("구글 드라이브 업로드 시도 중...")
-    scope = ['https://www.googleapis.com/auth/drive']
-    key_content = os.environ.get('GDRIVE_SERVICE_ACCOUNT_KEY')
-    folder_id = os.environ.get('GDRIVE_FOLDER_ID')
-
-    if not key_content or not folder_id:
-        raise ValueError("깃허브 Secrets 설정(Key 또는 Folder ID)을 확인하세요.")
-        
-    key_dict = json.loads(key_content)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
+    return final_df
     
-    gauth = GoogleAuth()
-    gauth.credentials = creds
-    drive = GoogleDrive(gauth)
+def upload_via_gas(file_path):
+    print("GAS를 통해 드라이브 업로드 시도 중...")
+    url = os.environ.get('GAS_WEBAPP_URL')
     
-    file_title = f"stock_analysis_{datetime.now().strftime('%Y%m%d')}.csv"
+    with open(file_path, "rb") as f:
+        content = f.read().decode('utf-8-sig')
     
-    # [수정] 개인용 드라이브에서 Quota 에러를 방지하는 가장 단순한 설정
-    f = drive.CreateFile({
-        'title': file_title, 
-        'parents': [{'id': folder_id}]
-    })
-    f.SetContentFile(file_path)
+    # 데이터를 JSON 형태로 전송
+    data = {
+        "fileName": f"stock_analysis_{datetime.now().strftime('%Y%m%d')}.csv",
+        "fileContent": content
+    }
     
-    # [수정] 불필요한 param을 제거하여 충돌 방지
-    f.Upload() 
-    print(f"최종 성공: 구글 드라이브 업로드 완료! ({file_title})")
+    response = requests.post(url, json=data)
+    print(f"결과: {response.text}")
 
 if __name__ == "__main__":
-    final_df = get_analysis_data()
+    df = get_analysis_data()
     csv_file = "analysis_result.csv"
-    final_df.to_csv(csv_file, index=True, encoding='utf-8-sig')
-    upload_to_drive(csv_file)
+    df.to_csv(csv_file, index=True, encoding='utf-8-sig')
+    upload_via_gas(csv_file))
+
