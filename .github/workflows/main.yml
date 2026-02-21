@@ -1,28 +1,28 @@
-name: Daily Stock CSV to Google Drive
+name: Daily Stock Analysis Automation (GAS Version)
 
 on:
   schedule:
-    - cron: '30 08 * * 1-5' # 평일 오후 5시 30분 (한국시간)
+    - cron: '30 08 * * 1-5' # 평일 17:30 (KST)
   workflow_dispatch: # 수동 실행 버튼
 
 jobs:
-  run-analysis:
+  analysis:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install Libraries
+      - name: Install Dependencies
         run: |
-          pip install --upgrade finance-datareader pandas pydrive2 oauth2client
+          pip install --upgrade finance-datareader pandas requests
 
-      - name: Run Script
+      - name: Run Analysis
+        # [핵심 수정] 파이썬 코드에게 우체국 주소(URL)를 전달합니다.
         env:
-          GDRIVE_SERVICE_ACCOUNT_KEY: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          GAS_WEBAPP_URL: ${{ secrets.GAS_WEBAPP_URL }}
         run: python update_stock_automatic.py
