@@ -4,34 +4,52 @@ import requests
 import json
 import os
 from datetime import datetime, timedelta
+from io import StringIO
+
+def get_naver_financials(total_pages=30):
+    """네이버 증권에서 5가지 핵심 재무 지표를 포함하여 수집합니다."""
+    print(f"📡 네이버 증권에서 {total_pages*50}개 종목 재무 데이터 수집 중...")
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
+    
+    # 5가지 지표를 강제 호출하는 파라미터 (영업이익률, ROE, PER, PBR, 부채비율)
+    field_params = "&fieldIds=operating_profit_rate&fieldIds=roe&fieldIds=per&fieldIds=pbr&fieldIds=debt_ratio"
+    
+    all_dfs = []
+    for page in range(1, total_pages + 1):
+        url = f"https://finance.naver.com/sise/sise_market_sum.naver?&page={page}{field_params}"
+        res = requests.get(url, headers=headers)
+        df_list = pd.read_html(StringIO(res.text))
+        df = df_list[1]
+        df = df[df['N'].notnull()] # 유효 행 필터링
+        all_dfs.append(df)
+        
+    full_df = pd.concat(all_dfs)
+    
+    # KRX 종목코드 매칭
+    df_krx = fdr.StockListing('KRX')[['Code', 'Name']]
+    result_df = pd.merge(full_df, df_krx, on='Name', how='inner')
+    
+    # 컬럼명 정리 (네이버 한글명을 영문/표준명으로 변경)
+    col_map = {
+        '영업이익률': 'Op_Margin',
+        'ROE': 'ROE',
+        'PER': 'PER',
+        'PBR': 'PBR',
+        '부채비율': 'Debt_Ratio',
+        '현재가': 'Close_Naver'
+    }
+    result_df.rename(columns=col_map, inplace=True)
+    return result_df
 
 def get_analysis_data():
-    # 1년(365일)치 데이터를 수집하도록 설정
-    days_to_load = 365
-    print(f"🚀 1,500개 종목 {days_to_load}일치 데이터 및 재무 지표 수집 시작...")
+    days_to_load = 365 # 1년치 데이터
+    print(f"🚀 1,500개 종목 1년치 기술적 지표 분석 시작...")
     
-    # 1. KRX 전체 종목 리스트 수집
-    df_krx = fdr.StockListing('KRX')
-    
-    # [핵심] 유연한 컬럼 찾기 함수: 이름이 조금 달라도 찾아냅니다.
-    def find_col(target_names, df):
-        for col in df.columns:
-            if col.strip().upper() in [name.upper() for name in target_names]:
-                return col
-        return None
-
-    # 시가총액, PBR, PER 컬럼 식별
-    marcap_col = find_col(['Marcap', '시가총액', '시가총액(억)'], df_krx)
-    pbr_col = find_col(['PBR', 'pbr', 'PBR(배)'], df_krx)
-    per_col = find_col(['PER', 'per', 'PER(배)'], df_krx)
-
-    # 시가총액 순 1,500개 추출
-    top_1500 = df_krx.sort_values(by=marcap_col, ascending=False).head(1500)
+    df_finance = get_naver_financials(30)
     results = []
     
-    for _, row in top_1500.iterrows():
+    for _, row in df_finance.iterrows():
         code, name = row['Code'], row['Name']
-        # 1년치 데이터 수집
         df = fdr.DataReader(code, (datetime.now() - timedelta(days=days_to_load)).strftime('%Y-%m-%d'))
         
         if df.empty or len(df) < 30: continue
@@ -41,7 +59,7 @@ def get_analysis_data():
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['SMA60'] = df['Close'].rolling(window=60).mean()
         
-        # 2. RSI (상대강도지수)
+        # 2. RSI
         delta = df['Close'].diff()
         up, down = delta.copy(), delta.copy()
         up[up < 0] = 0; down[down > 0] = 0
@@ -59,49 +77,37 @@ def get_analysis_data():
         df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
         df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
         
-        # --- 데이터 병합 및 강제 주입 ---
+        # --- 데이터 결합 ---
         last_row = df.iloc[-1].copy()
         last_row['Date'] = df.index[-1].strftime('%Y-%m-%d')
         last_row['Code'], last_row['Name'] = code, name
         
-        # PBR, PER을 파일의 명확한 컬럼으로 강제 할당
-        last_row['PBR'] = row[pbr_col] if pbr_col else "N/A"
-        last_row['PER'] = row[per_col] if per_col else "N/A"
-        last_row['Market'] = row['Market'] if 'Market' in row else "Unknown"
-        
+        # 네이버 재무 데이터 주입
+        for field in ['Op_Margin', 'ROE', 'PER', 'PBR', 'Debt_Ratio']:
+            last_row[field] = row[field] if field in row else "N/A"
+            
         results.append(last_row)
         
     return pd.DataFrame(results)
 
 def upload_via_gas(file_path, file_name):
-    print(f"📡 {file_name} 전송 중...")
     url = os.environ.get('GAS_WEBAPP_URL')
     folder_id = os.environ.get('GDRIVE_FOLDER_ID')
-    
     with open(file_path, "r", encoding='utf-8-sig') as f:
         content = f.read()
-    
-    data = {
-        "fileName": file_name,
-        "fileContent": content,
-        "folderId": folder_id
-    }
-    
-    response = requests.post(url, data=json.dumps(data))
-    print(f"✅ 서버 응답: {response.text}")
+    data = {"fileName": file_name, "fileContent": content, "folderId": folder_id}
+    requests.post(url, data=json.dumps(data))
 
 if __name__ == "__main__":
     final_df = get_analysis_data()
-    
-    # 제미나이가 잘 읽도록 RSI 낮은 순(과매도)으로 우선 정렬
     final_df = final_df.sort_values(by='RSI', ascending=True)
     
-    # 1. 전체 데이터 업로드
+    # 파일 저장 및 업로드
     full_file = "analysis_full.csv"
     final_df.to_csv(full_file, index=False, encoding='utf-8-sig')
     upload_via_gas(full_file, f"stock_full_{datetime.now().strftime('%Y%m%d')}.csv")
     
-    # 2. 타겟 후보(RSI 35 이하 또는 MACD 반전) 업로드
+    # 타겟 종목 (RSI 과매도 또는 MACD 반전)
     candidates = final_df[(final_df['RSI'] <= 35) | (final_df['MACD_Hist'] > 0)]
     candidate_file = "target_candidates.csv"
     candidates.to_csv(candidate_file, index=False, encoding='utf-8-sig')
