@@ -56,8 +56,10 @@ def get_analysis_data():
 def upload_to_drive(file_path):
     scope = ['https://www.googleapis.com/auth/drive']
     key_content = os.environ.get('GDRIVE_SERVICE_ACCOUNT_KEY')
-    if not key_content:
-        raise ValueError("GDRIVE_SERVICE_ACCOUNT_KEY 설정이 되어있지 않습니다.")
+    folder_id = os.environ.get('GDRIVE_FOLDER_ID')
+
+    if not key_content or not folder_id:
+        raise ValueError("깃허브 Secrets에 Key 또는 Folder ID가 설정되지 않았습니다.")
         
     key_dict = json.loads(key_content)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
@@ -66,16 +68,17 @@ def upload_to_drive(file_path):
     gauth.credentials = creds
     drive = GoogleDrive(gauth)
     
-    folder_id = os.environ.get('GDRIVE_FOLDER_ID')
     file_title = f"stock_analysis_{datetime.now().strftime('%Y%m%d')}.csv"
     
-    f = drive.CreateFile({'title': file_title, 'parents': [{'id': folder_id}]})
+    # [수정] 업로드 설정을 보강하여 403 에러 방지
+    file_metadata = {
+        'title': file_title, 
+        'parents': [{'id': folder_id}]
+    }
+    
+    f = drive.CreateFile(file_metadata)
     f.SetContentFile(file_path)
-    f.Upload()
-    print(f"구글 드라이브 업로드 완료: {file_title}")
-
-if __name__ == "__main__":
-    final_df = get_analysis_data()
-    csv_file = "analysis_result.csv"
-    final_df.to_csv(csv_file, index=True, encoding='utf-8-sig')
-    upload_to_drive(csv_file)
+    
+    # [수정] 공유 드라이브 및 할당량 관련 설정 추가
+    f.Upload(param={'supportsAllDrives': True}) 
+    print(f"최종 성공: 구글 드라이브 업로드 완료! ({file_title})")
