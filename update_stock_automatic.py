@@ -56,5 +56,6 @@ if __name__ == "__main__":
     df = get_analysis_data()
     csv_file = "analysis_result.csv"
     df.to_csv(csv_file, index=True, encoding='utf-8-sig')
-    upload_via_gas(csv_file))
+    upload_via_gas(csv_file)
+
 
