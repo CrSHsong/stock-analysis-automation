@@ -8,50 +8,39 @@ from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 
 def get_analysis_data():
-    print("종목 분석 시작...")
+    print("1. 종목 리스트 수집 시작...")
     df_krx = fdr.StockListing('KRX')
     
-    # [수정] 대소문자 상관없이 시가총액 컬럼(marcap)을 찾습니다.
-    target_col = None
-    for col in df_krx.columns:
-        if col.lower() == 'marcap':
-            target_col = col
-            break
+    # [오류 반영] MarCap, MarketCap, Marcap 등 대소문자 무관하게 시가총액 열 찾기
+    target_col = next((col for col in df_krx.columns if col.lower() == 'marcap'), None)
             
     if target_col:
-        print(f"찾은 시가총액 컬럼명: {target_col}")
+        print(f"계산 근거: '{target_col}' 컬럼을 기준으로 상위 1000개 선별")
         top_1000 = df_krx.sort_values(by=target_col, ascending=False).head(1000)
     else:
-        print(f"현재 컬럼 목록: {df_krx.columns.tolist()}")
-        raise KeyError("시가총액 컬럼을 찾을 수 없습니다. (Marcap 확인 필요)")
+        raise KeyError("시가총액 컬럼을 찾을 수 없습니다. 데이터 형식을 확인하세요.")
     
-    analysis_results = []
+    results = []
     for _, row in top_1000.iterrows():
         code, name = row['Code'], row['Name']
-        # 최근 100일치 데이터를 가져와 지표 계산
+        # 최근 100일치 데이터를 가져와 보조지표 계산
         df = fdr.DataReader(code, (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d'))
         if df.empty: continue
         
-        # 보조지표 계산
+        # 이동평균선 및 RSI 계산
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['SMA60'] = df['Close'].rolling(window=60).mean()
-        
-        # RSI 계산
         delta = df['Close'].diff()
         up, down = delta.copy(), delta.copy()
         up[up < 0] = 0
         down[down > 0] = 0
-        ema_up = up.ewm(com=13, adjust=False).mean()
-        ema_down = down.abs().ewm(com=13, adjust=False).mean()
-        df['RSI'] = 100 - (100 / (1 + (ema_up / ema_down)))
+        df['RSI'] = 100 - (100 / (1 + (up.ewm(com=13).mean() / down.abs().ewm(com=13).mean())))
         
-        # 마지막 날의 데이터만 추출
         last_row = df.iloc[-1].copy()
-        last_row['Code'] = code
-        last_row['Name'] = name
-        analysis_results.append(last_row)
+        last_row['Code'], last_row['Name'] = code, name
+        results.append(last_row)
         
-    return pd.DataFrame(analysis_results)
+    return pd.DataFrame(results)
 
 def upload_to_drive(file_path):
     scope = ['https://www.googleapis.com/auth/drive']
