@@ -17,7 +17,7 @@ def get_analysis_data():
     
     for _, row in top_1500.iterrows():
         code, name = row['Code'], row['Name']
-        df = fdr.DataReader(code, (datetime.now() - timedelta(days=250)).strftime('%Y-%m-%d'))
+        df = fdr.DataReader(code, (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'))
         if df.empty or len(df) < 30: continue
         
         # 기술적 지표 계산
@@ -73,3 +73,4 @@ if __name__ == "__main__":
     candidate_file = "target_candidates.csv"
     candidates.to_csv(candidate_file, index=False, encoding='utf-8-sig')
     upload_via_gas(candidate_file, f"target_candidates_{datetime.now().strftime('%Y%m%d')}.csv")
+
