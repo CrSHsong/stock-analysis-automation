@@ -11,7 +11,18 @@ from oauth2client.service_account import ServiceAccountCredentials
 def get_analysis_data():
     print("종목 분석 시작...")
     df_krx = fdr.StockListing('KRX')
-    top_1000 = df_krx.sort_values(by='MarCap', ascending=False).head(1000)
+    
+    # [수정 포인트] 시가총액 컬럼 이름이 'MarCap' 혹은 'MarketCap'인 경우를 모두 체크
+    possible_cols = ['MarCap', 'MarketCap']
+    target_col = next((col for col in possible_cols if col in df_krx.columns), None)
+    
+    if target_col:
+        # 찾은 컬럼 이름으로 정렬
+        top_1000 = df_krx.sort_values(by=target_col, ascending=False).head(1000)
+    else:
+        # 만약 둘 다 없다면 에러 방지를 위해 전체 컬럼 확인 로그 출력 후 중단
+        print(f"현재 데이터 컬럼 목록: {df_krx.columns.tolist()}")
+        raise KeyError("시가총액(MarCap/MarketCap) 컬럼을 찾을 수 없습니다.")
     
     analysis_results = []
     for _, row in top_1000.iterrows():
