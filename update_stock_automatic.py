@@ -56,7 +56,18 @@ def upload_via_gas(file_path):
 
 if __name__ == "__main__":
     final_df = get_analysis_data()
-    csv_file = "analysis_result.csv"
-    final_df.to_csv(csv_file, index=True, encoding='utf-8-sig')
-    # [수정 완료] 괄호 짝을 맞췄습니다.
+    
+    # 1. 제미나이가 잘 읽도록 RSI 낮은 순으로 정렬
+    final_df = final_df.sort_values(by='RSI', ascending=True)
+    
+    # 2. 전체 분석 결과 저장 및 업로드
+    csv_file = "analysis_result_full.csv"
+    final_df.to_csv(csv_file, index=False, encoding='utf-8-sig')
     upload_via_gas(csv_file)
+    
+    # 3. [추가] 유망 종목(RSI 35 이하)만 따로 모은 '공략집' 파일 업로드
+    candidates = final_df[final_df['RSI'] <= 35]
+    candidate_file = "target_candidates.csv"
+    candidates.to_csv(candidate_file, index=False, encoding='utf-8-sig')
+    upload_via_gas(candidate_file)
+
