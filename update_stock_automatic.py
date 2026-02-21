@@ -11,7 +11,7 @@ def get_analysis_data():
     print("종목 분석 시작... (약 10~15분 소요)")
     df_krx = fdr.StockListing('KRX')
     
-    # 시가총액 컬럼 찾기 (대소문자 대응)
+    # 대소문자 무관하게 시가총액 컬럼 찾기
     target_col = next((col for col in df_krx.columns if col.lower() == 'marcap'), None)
     if not target_col:
         raise KeyError("시가총액 컬럼을 찾을 수 없습니다.")
@@ -21,7 +21,6 @@ def get_analysis_data():
     analysis_results = []
     for _, row in top_1000.iterrows():
         code, name = row['Code'], row['Name']
-        # 최근 100일 데이터
         df = fdr.DataReader(code, (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d'))
         if df.empty: continue
         
@@ -40,7 +39,7 @@ def get_analysis_data():
     return pd.DataFrame(analysis_results)
 
 def upload_to_drive(file_path):
-    print("구글 드라이브 업로드 준비 중...")
+    print("구글 드라이브 업로드 시도 중...")
     scope = ['https://www.googleapis.com/auth/drive']
     key_content = os.environ.get('GDRIVE_SERVICE_ACCOUNT_KEY')
     folder_id = os.environ.get('GDRIVE_FOLDER_ID')
@@ -57,13 +56,17 @@ def upload_to_drive(file_path):
     
     file_title = f"stock_analysis_{datetime.now().strftime('%Y%m%d')}.csv"
     
-    # 403 Quota 에러 방지를 위한 설정
-    f = drive.CreateFile({'title': file_title, 'parents': [{'id': folder_id}]})
+    # [수정] 개인용 드라이브에서 Quota 에러를 방지하는 가장 단순한 설정
+    f = drive.CreateFile({
+        'title': file_title, 
+        'parents': [{'id': folder_id}]
+    })
     f.SetContentFile(file_path)
-    f.Upload(param={'supportsAllDrives': True}) 
+    
+    # [수정] 불필요한 param을 제거하여 충돌 방지
+    f.Upload() 
     print(f"최종 성공: 구글 드라이브 업로드 완료! ({file_title})")
 
-# [핵심] 이 부분이 있어야 코드가 실제로 돌아갑니다!
 if __name__ == "__main__":
     final_df = get_analysis_data()
     csv_file = "analysis_result.csv"
